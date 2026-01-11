@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 
 import LoginPage from "./pages/LoginPage.jsx";
+import RegisterPage from "./pages/RegisterPage.jsx";
 
 import StudentClassesPage from "./pages/student/StudentClassesPage.jsx";
 import StudentLeavePage from "./pages/student/StudentLeavePage.jsx";
@@ -14,6 +15,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/login" replace />} />
 
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
 
       <Route path="/student/classes" element={<StudentClassesPage />} />
       <Route path="/student/leave" element={<StudentLeavePage />} />
