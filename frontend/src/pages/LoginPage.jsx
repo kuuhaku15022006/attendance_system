@@ -1,3 +1,4 @@
+// src/pages/LoginPage.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { loginUser } from "../utils/auth.js";
@@ -7,20 +8,29 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const onSubmit = (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
     setMsg("");
+    setLoading(true);
 
-    const res = loginUser({ username, password });
-    if (!res.ok) {
-      setMsg(res.message);
-      return;
+    try {
+      const res = await loginUser({ username, password });
+
+      if (!res?.ok) {
+        setMsg(res?.message || "Đăng nhập thất bại");
+        return;
+      }
+
+      const role = res.user.role;
+      nav(role === "teacher" ? "/teacher/classes" : "/student/classes");
+    } catch (err) {
+      console.error(err);
+      setMsg(err?.message || "Có lỗi xảy ra");
+    } finally {
+      setLoading(false);
     }
-
-    // chuyển theo role
-    const role = res.user.role;
-    nav(role === "teacher" ? "/teacher/classes" : "/student/classes");
   };
 
   return (
@@ -35,6 +45,7 @@ export default function LoginPage() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Nhập tài khoản"
             style={{ width: "100%", padding: 10, marginTop: 6 }}
+            required
           />
         </label>
 
@@ -46,13 +57,18 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Nhập mật khẩu"
             style={{ width: "100%", padding: 10, marginTop: 6 }}
+            required
           />
         </label>
 
-        <button type="submit" style={{ padding: 10, cursor: "pointer" }}>
-          Đăng nhập
+        <button type="submit" disabled={loading} style={{ padding: 10, cursor: "pointer" }}>
+          {loading ? "Đang đăng nhập..." : "Đăng nhập"}
         </button>
       </form>
+
+      <div style={{ marginTop: 12 }}>
+        <Link to="/forgot-password">Quên mật khẩu?</Link>
+      </div>
 
       {msg ? <p style={{ marginTop: 12 }}>{msg}</p> : null}
 

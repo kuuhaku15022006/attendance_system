@@ -1,14 +1,17 @@
-// src/pages/RegisterPage.jsx
+// src/pages/ResetPasswordPage.jsx
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { registerUser } from "../utils/auth.js";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { resetPassword } from "../utils/auth.js";
 
-export default function RegisterPage() {
+export default function ResetPasswordPage() {
   const nav = useNavigate();
+  const location = useLocation();
 
-  const [username, setUsername] = useState("");
-  const [role, setRole] = useState("student");
-  const [password, setPassword] = useState("");
+  const presetEmail = location.state?.username || "";
+
+  const [username, setUsername] = useState(presetEmail);
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [msg, setMsg] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -19,20 +22,20 @@ export default function RegisterPage() {
     setMsg("");
     setOkMsg("");
 
-    if (password !== confirm) {
+    if (newPassword !== confirm) {
       setMsg("Mật khẩu nhập lại không khớp");
       return;
     }
 
     setLoading(true);
     try {
-      const res = registerUser({ username, password, role });
+      const res = resetPassword({ username, code, newPassword });
       if (!res?.ok) {
-        setMsg(res?.message || "Đăng ký thất bại");
+        setMsg(res?.message || "Đổi mật khẩu thất bại");
         return;
       }
 
-      setOkMsg("✅ Đăng ký thành công! Đang chuyển về trang đăng nhập...");
+      setOkMsg("✅ Đổi mật khẩu thành công! Đang chuyển về đăng nhập...");
       setTimeout(() => nav("/login"), 900);
     } finally {
       setLoading(false);
@@ -41,45 +44,43 @@ export default function RegisterPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 420 }}>
-      <h2>Đăng ký</h2>
+      <h2>Đặt lại mật khẩu</h2>
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
         <label>
-          Tài khoản (email)
+          Email
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="Nhập email"
             style={{ width: "100%", padding: 10, marginTop: 6 }}
             required
           />
         </label>
 
         <label>
-          Vai trò
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
+          Mã (OTP)
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="Nhập mã 6 số trong email"
             style={{ width: "100%", padding: 10, marginTop: 6 }}
-          >
-            <option value="student">Student</option>
-            <option value="teacher">Teacher</option>
-          </select>
+            required
+          />
         </label>
 
         <label>
-          Mật khẩu
+          Mật khẩu mới
           <input
             type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
             style={{ width: "100%", padding: 10, marginTop: 6 }}
             required
           />
         </label>
 
         <label>
-          Nhập lại mật khẩu
+          Nhập lại mật khẩu mới
           <input
             type="password"
             value={confirm}
@@ -90,7 +91,7 @@ export default function RegisterPage() {
         </label>
 
         <button type="submit" disabled={loading} style={{ padding: 10, cursor: "pointer" }}>
-          {loading ? "Đang đăng ký..." : "Đăng ký"}
+          {loading ? "Đang đổi..." : "Đổi mật khẩu"}
         </button>
       </form>
 
@@ -98,7 +99,7 @@ export default function RegisterPage() {
       {okMsg ? <p style={{ marginTop: 12, color: "limegreen" }}>{okMsg}</p> : null}
 
       <p style={{ marginTop: 12 }}>
-        Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
+        <Link to="/forgot-password">Quay lại quên mật khẩu</Link>
       </p>
     </div>
   );
