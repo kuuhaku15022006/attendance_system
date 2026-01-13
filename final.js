@@ -19,13 +19,15 @@ app.use((req, res, next) => {
 
 // Model: AttendanceSession 
 const AttendanceSession = mongoose.model("AttendanceSession", new mongoose.Schema({
-    classId: { type: String, required: true },
-    lesson: { type: String, required: true },
-    attendanceCode: { type: String, required: true },
-    startTime: { type: Date, required: true },
-    endTime: { type: Date, required: true },
-    isClosed: { type: Boolean, default: false }
+  classId: { type: String, required: true },
+  lesson: { type: String, required: true },
+  attendanceCode: { type: String, required: true },
+  startTime: { type: Date, required: true },
+  endTime: { type: Date, required: true },
+  isClosed: { type: Boolean, default: false },
+  createdBy: { type: String, required: true } 
 }, { timestamps: true }));
+
 
 // Model: AttendanceRecord 
 const attendanceRecordSchema = new mongoose.Schema({
