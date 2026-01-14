@@ -1,217 +1,299 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { attendanceApi } from "../../api/attendanceApi";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+
+// Random code: 6 ký tự (A-Z + 0-9)
+function generateCode(len = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // bỏ O/0, I/1 cho dễ nhìn
+  let out = "";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
 
 export default function TeacherSessionsPage() {
   const { classId } = useParams();
+  const nav = useNavigate();
+  const location = useLocation();
+  const classInfo = location.state?.classInfo;
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  // Cấu hình điểm danh
+  const [durationMin, setDurationMin] = useState(10);
 
-  const [sessions, setSessions] = useState([]);
-
-  // form create session
-  const [lesson, setLesson] = useState("");
+  // Trạng thái phiên điểm danh
+  const [isRunning, setIsRunning] = useState(false);
   const [attendanceCode, setAttendanceCode] = useState("");
-  const [startTime, setStartTime] = useState(""); // datetime-local
-  const [endTime, setEndTime] = useState("");     // datetime-local
-  const [msg, setMsg] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [startAt, setStartAt] = useState(null);
+  const [endAt, setEndAt] = useState(null);
+  const [now, setNow] = useState(Date.now());
 
-  const loadSessions = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const res = await attendanceApi.getSessionsByClass(classId);
-      setSessions(res.data || []);
-    } catch (e) {
-      setError(e?.response?.data?.message || e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Danh sách đã điểm danh
+  // item: { studentId, studentName, checkedAt }
+  const [checked, setChecked] = useState([]);
 
+  // ======= Timer tick =======
   useEffect(() => {
-    loadSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId]);
+    if (!isRunning) return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [isRunning]);
 
-  const genCode = () => {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+  // ======= Auto stop when expired =======
+  useEffect(() => {
+    if (!isRunning || !endAt) return;
+    if (now >= endAt) {
+      setIsRunning(false);
+    }
+  }, [now, endAt, isRunning]);
+
+  const remainingMs = useMemo(() => {
+    if (!isRunning || !endAt) return 0;
+    return Math.max(0, endAt - now);
+  }, [isRunning, endAt, now]);
+
+  const remainingText = useMemo(() => {
+    const s = Math.floor(remainingMs / 1000);
+    const mm = Math.floor(s / 60);
+    const ss = s % 60;
+    return `${mm}m ${String(ss).padStart(2, "0")}s`;
+  }, [remainingMs]);
+
+  function startSession() {
+    const code = generateCode(6);
+    const start = Date.now();
+    const end = start + Number(durationMin) * 60 * 1000;
+
     setAttendanceCode(code);
-  };
+    setStartAt(start);
+    setEndAt(end);
+    setIsRunning(true);
+    setChecked([]); // phiên mới thì reset danh sách
+  }
 
-  const toISOFromLocal = (localStr) => {
-    // datetime-local -> Date -> ISO string
-    // localStr dạng "2026-01-13T21:30"
-    if (!localStr) return "";
-    return new Date(localStr).toISOString();
-  };
+  function stopSession() {
+    setIsRunning(false);
+  }
 
-  const onCreate = async (e) => {
-    e.preventDefault();
-    setMsg("");
+  // ======= Demo: giả lập sinh viên điểm danh =======
+  const [demoStudentId, setDemoStudentId] = useState("");
+  const [demoStudentName, setDemoStudentName] = useState("");
+  const [demoInputCode, setDemoInputCode] = useState("");
 
-    if (!lesson.trim() || !attendanceCode.trim() || !startTime || !endTime) {
-      setMsg("Vui lòng nhập đủ: lesson, code, startTime, endTime.");
+  function demoCheckIn() {
+    if (!isRunning) {
+      alert("Chưa mở điểm danh.");
+      return;
+    }
+    if (!demoStudentId.trim() || !demoStudentName.trim()) {
+      alert("Nhập MSSV và tên sinh viên.");
+      return;
+    }
+    if (demoInputCode.trim().toUpperCase() !== attendanceCode) {
+      alert("Sai mã điểm danh!");
       return;
     }
 
-    try {
-      setSubmitting(true);
-      await attendanceApi.createSession({
-        classId,
-        lesson: lesson.trim(),
-        attendanceCode: attendanceCode.trim(),
-        startTime: toISOFromLocal(startTime),
-        endTime: toISOFromLocal(endTime),
-      });
-
-      setMsg("Tạo session thành công.");
-      setLesson("");
-      setAttendanceCode("");
-      setStartTime("");
-      setEndTime("");
-      await loadSessions();
-    } catch (e2) {
-      setMsg(e2?.response?.data?.message || e2.message);
-    } finally {
-      setSubmitting(false);
+    const sid = demoStudentId.trim();
+    if (checked.some((x) => x.studentId === sid)) {
+      alert("Sinh viên này đã điểm danh rồi.");
+      return;
     }
-  };
 
-  const onClose = async (sessionId) => {
-    try {
-      setMsg("");
-      await attendanceApi.closeSession(sessionId);
-      setMsg("Đóng session thành công.");
-      await loadSessions();
-    } catch (e) {
-      setMsg(e?.response?.data?.message || e.message);
-    }
-  };
+    setChecked((prev) => [
+      ...prev,
+      { studentId: sid, studentName: demoStudentName.trim(), checkedAt: Date.now() },
+    ]);
+
+    setDemoInputCode("");
+  }
 
   return (
-    <div style={{ padding: 24, maxWidth: 980 }}>
-      <h2 style={{ marginBottom: 6 }}>Quản lý buổi điểm danh - Lớp {classId}</h2>
-      <div style={{ opacity: 0.85, marginBottom: 14 }}>
-        Tạo session để sinh viên vào “Tham gia lớp” và điểm danh.
+    <div style={{ padding: 20, maxWidth: 980, margin: "0 auto" }}>
+      <button
+        type="button"
+        onClick={() => nav("/teacher/classes")}
+        style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", background: "#fff" }}
+      >
+        ← Quay lại Classes
+      </button>
+
+      <div style={{ marginTop: 12 }}>
+        <h1 style={{ marginBottom: 6 }}>Quản lý buổi điểm danh</h1>
+
+        <div style={{ color: "#555" }}>
+          Lớp:{" "}
+          <b>
+            {classInfo ? `${classInfo.subjectName} - ${classInfo.subjectCode}` : `ClassId: ${classId}`}
+          </b>
+        </div>
+
+        {classInfo ? (
+          <div style={{ color: "#666", marginTop: 4 }}>
+            {classInfo.dayOfWeek} • Ca {classInfo.period} • GV: {classInfo.teacherName}
+          </div>
+        ) : null}
       </div>
 
-      {/* Create form */}
-      <div style={{ border: "1px solid #333", borderRadius: 12, padding: 14, background: "#111" }}>
-        <div style={{ fontWeight: 800, marginBottom: 10 }}>Tạo session</div>
+      {/* Control */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 12, marginTop: 16 }}>
+        {/* Left: session control */}
+        <div style={{ border: "1px solid #ddd", borderRadius: 12, background: "#fff", padding: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Thiết lập & Mở điểm danh</div>
 
-        <form onSubmit={onCreate} style={{ display: "grid", gap: 10 }}>
-          <label>
-            <div style={{ marginBottom: 6 }}>Buổi / Lesson</div>
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ fontWeight: 600 }}>Thời lượng (phút):</label>
             <input
-              value={lesson}
-              onChange={(e) => setLesson(e.target.value)}
-              placeholder="VD: Buổi 3 - Chương 2"
-              style={{ width: "100%", padding: 10, borderRadius: 10 }}
+              type="number"
+              min={1}
+              max={180}
+              value={durationMin}
+              onChange={(e) => setDurationMin(e.target.value)}
+              style={{ width: 120, padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+              disabled={isRunning}
             />
-          </label>
 
-          <label>
-            <div style={{ marginBottom: 6 }}>Mã điểm danh</div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <input
-                value={attendanceCode}
-                onChange={(e) => setAttendanceCode(e.target.value)}
-                placeholder="VD: 123456"
-                style={{ flex: 1, padding: 10, borderRadius: 10 }}
-              />
+            {!isRunning ? (
               <button
                 type="button"
-                onClick={genCode}
-                style={{ padding: "10px 14px", borderRadius: 10 }}
+                onClick={startSession}
+                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #111", background: "#111", color: "#fff" }}
               >
-                Tạo mã
+                Tạo mã & Bắt đầu
               </button>
-            </div>
-          </label>
-
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-            <label>
-              <div style={{ marginBottom: 6 }}>Start time</div>
-              <input
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                style={{ width: "100%", padding: 10, borderRadius: 10 }}
-              />
-            </label>
-
-            <label>
-              <div style={{ marginBottom: 6 }}>End time</div>
-              <input
-                type="datetime-local"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                style={{ width: "100%", padding: 10, borderRadius: 10 }}
-              />
-            </label>
+            ) : (
+              <button
+                type="button"
+                onClick={stopSession}
+                style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #f3c2c2", background: "#fff5f5", color: "#b00020" }}
+              >
+                Dừng điểm danh
+              </button>
+            )}
           </div>
 
-          <button type="submit" disabled={submitting} style={{ padding: "10px 14px", width: 180 }}>
-            {submitting ? "Đang tạo..." : "Tạo session"}
-          </button>
-        </form>
-
-        {msg && <div style={{ marginTop: 10 }}>{msg}</div>}
-      </div>
-
-      {/* List sessions */}
-      <div style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 800, marginBottom: 10 }}>Danh sách sessions</div>
-
-        {loading ? (
-          <div>Đang tải...</div>
-        ) : error ? (
-          <div>Lỗi: {error}</div>
-        ) : sessions.length === 0 ? (
-          <div>Chưa có session nào cho lớp này.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {sessions.map((s) => (
-              <div
-                key={s._id}
-                style={{
-                  border: "1px solid #333",
-                  borderRadius: 12,
-                  padding: 14,
-                  background: "#0f0f0f",
-                }}
-              >
-                <div style={{ fontWeight: 800 }}>
-                  {s.lesson} {s.isClosed ? "(Đã đóng)" : "(Đang mở)"}
-                </div>
-                <div style={{ opacity: 0.85, marginTop: 6 }}>
-                  Code: <span style={{ fontWeight: 700 }}>{s.attendanceCode}</span>
-                </div>
-                <div style={{ opacity: 0.85 }}>
-                  Start: {new Date(s.startTime).toLocaleString()}
-                </div>
-                <div style={{ opacity: 0.85 }}>
-                  End: {new Date(s.endTime).toLocaleString()}
-                </div>
-                <div style={{ opacity: 0.75, marginTop: 6 }}>SessionId: {s._id}</div>
-
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    onClick={() => onClose(s._id)}
-                    disabled={s.isClosed}
-                    style={{ padding: "10px 14px", borderRadius: 10 }}
-                  >
-                    Đóng session
-                  </button>
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "#fafafa", border: "1px dashed #ccc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ color: "#666", fontSize: 13 }}>Mã điểm danh</div>
+                <div style={{ fontWeight: 900, fontSize: 28, letterSpacing: 2 }}>
+                  {attendanceCode || "------"}
                 </div>
               </div>
-            ))}
+
+              <div>
+                <div style={{ color: "#666", fontSize: 13 }}>Trạng thái</div>
+                <div style={{ fontWeight: 800 }}>
+                  {isRunning ? `Đang mở • Còn ${remainingText}` : "Chưa mở / Đã hết hạn"}
+                </div>
+                <div style={{ color: "#777", marginTop: 4 }}>
+                  Bắt đầu: {startAt ? fmtTime(startAt) : "--:--:--"} • Kết thúc: {endAt ? fmtTime(endAt) : "--:--:--"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, color: "#666", fontSize: 13 }}>
+            Gợi ý: Sinh viên nhập mã này để điểm danh trong thời gian hiệu lực.
+          </div>
+        </div>
+
+        {/* Right: demo student check-in */}
+        <div style={{ border: "1px solid #ddd", borderRadius: 12, background: "#fff", padding: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Giả lập sinh viên điểm danh (test)</div>
+          <div style={{ color: "#666", marginTop: 6, fontSize: 13 }}>
+            (Sau này nối backend: sinh viên app sẽ gọi API check-in. Phần này để test nhanh.)
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            <input
+              value={demoStudentId}
+              onChange={(e) => setDemoStudentId(e.target.value)}
+              placeholder="MSSV (VD: 631234)"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+            />
+            <input
+              value={demoStudentName}
+              onChange={(e) => setDemoStudentName(e.target.value)}
+              placeholder="Tên sinh viên (VD: Lê Ngọc Vỹ)"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
+            />
+            <input
+              value={demoInputCode}
+              onChange={(e) => setDemoInputCode(e.target.value.toUpperCase())}
+              placeholder="Nhập mã điểm danh"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc", letterSpacing: 2, fontWeight: 800 }}
+            />
+
+            <button
+              type="button"
+              onClick={demoCheckIn}
+              style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #111", background: "#111", color: "#fff" }}
+            >
+              Điểm danh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Checked-in list */}
+      <div style={{ marginTop: 14, border: "1px solid #ddd", borderRadius: 12, background: "#fff", padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 800, fontSize: 16 }}>Sinh viên đã điểm danh</div>
+          <div style={{ color: "#666" }}>
+            Tổng: <b>{checked.length}</b>
+          </div>
+        </div>
+
+        {checked.length === 0 ? (
+          <div style={{ marginTop: 10, color: "#777" }}>Chưa có sinh viên nào điểm danh.</div>
+        ) : (
+          <div style={{ marginTop: 10, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={th}>#</th>
+                  <th style={th}>MSSV</th>
+                  <th style={th}>Họ tên</th>
+                  <th style={th}>Thời gian</th>
+                </tr>
+              </thead>
+              <tbody>
+                {checked
+                  .slice()
+                  .sort((a, b) => a.checkedAt - b.checkedAt)
+                  .map((s, idx) => (
+                    <tr key={s.studentId}>
+                      <td style={td}>{idx + 1}</td>
+                      <td style={td}>{s.studentId}</td>
+                      <td style={td}>{s.studentName}</td>
+                      <td style={td}>{fmtTime(s.checkedAt)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
     </div>
   );
 }
+
+const th = {
+  textAlign: "left",
+  padding: "10px 8px",
+  borderBottom: "1px solid #eee",
+  color: "#555",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const td = {
+  padding: "10px 8px",
+  borderBottom: "1px solid #f0f0f0",
+};
