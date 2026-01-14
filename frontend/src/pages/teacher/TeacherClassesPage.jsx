@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-/* ====== CONSTANTS ====== */
+const STORAGE_KEY = "attendance_teacher_classes_v1";
+
 const DAYS = [
   { value: "MON", label: "Thứ 2" },
   { value: "TUE", label: "Thứ 3" },
@@ -21,18 +23,36 @@ function normalizeCode(code) {
   return code.trim().toUpperCase().replace(/\s+/g, "");
 }
 
-/* ====== PAGE ====== */
+// Load from localStorage (safe)
+function loadClasses() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function TeacherClassesPage() {
-  // ✅ KHÔNG DEMO
-  const [classes, setClasses] = useState([]);
+  const navigate = useNavigate();
 
-  // Search
+  // ✅ Load classes once from localStorage
+  const [classes, setClasses] = useState(() => loadClasses());
+
+  // ✅ Auto-save classes whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(classes));
+    } catch {
+      // ignore
+    }
+  }, [classes]);
+
   const [query, setQuery] = useState("");
-
-  // Modal create
   const [open, setOpen] = useState(false);
 
-  // Form create
   const [form, setForm] = useState({
     subjectName: "",
     subjectCode: "",
@@ -43,7 +63,6 @@ export default function TeacherClassesPage() {
 
   const [errors, setErrors] = useState({});
 
-  /* ====== FILTER SEARCH ====== */
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return classes;
@@ -56,7 +75,6 @@ export default function TeacherClassesPage() {
     });
   }, [classes, query]);
 
-  /* ====== VALIDATION ====== */
   function validate(nextForm) {
     const e = {};
     if (!nextForm.subjectName.trim()) e.subjectName = "Vui lòng nhập tên môn học.";
@@ -64,9 +82,8 @@ export default function TeacherClassesPage() {
     if (!nextForm.teacherName.trim()) e.teacherName = "Vui lòng nhập tên giảng viên.";
 
     const code = normalizeCode(nextForm.subjectCode);
-    if (classes.some((c) => c.subjectCode === code)) {
-      e.subjectCode = "Mã môn đã tồn tại.";
-    }
+    if (classes.some((c) => c.subjectCode === code)) e.subjectCode = "Mã môn đã tồn tại.";
+
     return e;
   }
 
@@ -105,16 +122,24 @@ export default function TeacherClassesPage() {
     closeModal();
   }
 
+  // (Tuỳ chọn) nút xoá toàn bộ dữ liệu đã lưu
+  function clearAll() {
+    if (!confirm("Xóa toàn bộ lớp đã lưu?")) return;
+    setClasses([]);
+    setQuery("");
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+  }
+
   return (
     <div style={{ padding: 20, maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ marginBottom: 6 }}>Teacher Classes</h1>
       <div style={{ color: "#555", marginBottom: 16 }}>
-        Tạo class và tìm kiếm môn (lọc theo tên môn / mã môn / giảng viên)
+        Tạo class và tìm kiếm môn (dữ liệu được lưu sau khi thoát)
       </div>
 
-      {/* ====== TOP ACTIONS ====== */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        {/* Search */}
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -126,77 +151,49 @@ export default function TeacherClassesPage() {
           <button
             type="button"
             onClick={() => setQuery("")}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
-            }}
+            style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #ddd", background: "#fff" }}
           >
             Clear
           </button>
         ) : null}
 
-        {/* Create */}
         <button
           type="button"
           onClick={() => setOpen(true)}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-          }}
+          style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "#fff" }}
         >
           + Tạo class
         </button>
+
+        <button
+          type="button"
+          onClick={clearAll}
+          style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff" }}
+        >
+          Xóa tất cả
+        </button>
       </div>
 
-      {/* ====== STATS ====== */}
       <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
         <Stat label="Tổng lớp" value={classes.length} />
         <Stat label="Đang hiển thị" value={filtered.length} />
         <Stat label="Ca học" value="1–4" />
       </div>
 
-      {/* ====== LIST ====== */}
       <div style={{ marginTop: 18 }}>
         {classes.length === 0 ? (
-          <div
-            style={{
-              padding: 18,
-              border: "1px dashed #bbb",
-              borderRadius: 10,
-              background: "#fafafa",
-            }}
-          >
+          <div style={{ padding: 18, border: "1px dashed #bbb", borderRadius: 10, background: "#fafafa" }}>
             Chưa có lớp nào. Bấm <b>“+ Tạo class”</b> để tạo lớp đầu tiên.
           </div>
         ) : filtered.length === 0 ? (
-          <div
-            style={{
-              padding: 18,
-              border: "1px dashed #bbb",
-              borderRadius: 10,
-              background: "#fafafa",
-            }}
-          >
+          <div style={{ padding: 18, border: "1px dashed #bbb", borderRadius: 10, background: "#fafafa" }}>
             Không tìm thấy môn phù hợp.
           </div>
         ) : (
           filtered.map((c) => (
             <div
               key={c.id}
-              style={{
-                padding: 14,
-                marginBottom: 12,
-                border: "1px solid #ddd",
-                borderRadius: 10,
-                background: "#fff",
-              }}
+              style={{ padding: 14, marginBottom: 12, border: "1px solid #ddd", borderRadius: 10, background: "#fff" }}
             >
               {/* ✅ Môn - Mã môn */}
               <div style={{ fontWeight: 800, fontSize: 16 }}>
@@ -214,40 +211,16 @@ export default function TeacherClassesPage() {
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
+                  onClick={() => navigate(`/teacher/classes/${c.id}/sessions`, { state: { classInfo: c } })}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "#fff" }}
                 >
                   Quản lý buổi điểm danh
                 </button>
-                <button
-                  type="button"
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #ddd",
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  Duyệt xin vắng
-                </button>
+
                 <button
                   type="button"
                   onClick={() => setClasses((prev) => prev.filter((x) => x.id !== c.id))}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #f3c2c2",
-                    background: "#fff5f5",
-                    color: "#b00020",
-                    cursor: "pointer",
-                  }}
+                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #f3c2c2", background: "#fff5f5", color: "#b00020" }}
                 >
                   Xóa
                 </button>
@@ -257,7 +230,7 @@ export default function TeacherClassesPage() {
         )}
       </div>
 
-      {/* ====== MODAL CREATE ====== */}
+      {/* Modal create class */}
       {open ? (
         <div
           style={{
@@ -273,21 +246,11 @@ export default function TeacherClassesPage() {
           onClick={closeModal}
         >
           <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              background: "#fff",
-              borderRadius: 12,
-              border: "1px solid #eee",
-              overflow: "hidden",
-            }}
+            style={{ width: "100%", maxWidth: 560, background: "#fff", borderRadius: 12, border: "1px solid #eee" }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
               <div style={{ fontWeight: 800, fontSize: 18 }}>Tạo class mới</div>
-              <div style={{ color: "#666", marginTop: 4 }}>
-                Nhập: Tên môn, Mã môn, Tên giảng viên, Ngày học (T2–CN), Ca (1–4).
-              </div>
             </div>
 
             <form onSubmit={submit} style={{ padding: 16 }}>
@@ -319,12 +282,7 @@ export default function TeacherClassesPage() {
                   <select
                     value={form.dayOfWeek}
                     onChange={(e) => setForm((p) => ({ ...p, dayOfWeek: e.target.value }))}
-                    style={{
-                      width: "100%",
-                      padding: 10,
-                      borderRadius: 8,
-                      border: "1px solid #ccc",
-                    }}
+                    style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
                   >
                     {DAYS.map((d) => (
                       <option key={d.value} value={d.value}>
@@ -339,12 +297,7 @@ export default function TeacherClassesPage() {
                   <select
                     value={form.period}
                     onChange={(e) => setForm((p) => ({ ...p, period: Number(e.target.value) }))}
-                    style={{
-                      width: "100%",
-                      padding: 10,
-                      borderRadius: 8,
-                      border: "1px solid #ccc",
-                    }}
+                    style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ccc" }}
                   >
                     {PERIODS.map((p) => (
                       <option key={p} value={p}>
@@ -359,26 +312,13 @@ export default function TeacherClassesPage() {
                 <button
                   type="button"
                   onClick={closeModal}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 8,
-                    border: "1px solid #ddd",
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
+                  style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd", background: "#fff" }}
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 8,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
+                  style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "#fff" }}
                 >
                   Tạo class
                 </button>
@@ -391,18 +331,9 @@ export default function TeacherClassesPage() {
   );
 }
 
-/* ====== SMALL COMPONENTS ====== */
 function Stat({ label, value }) {
   return (
-    <div
-      style={{
-        minWidth: 160,
-        padding: 12,
-        border: "1px solid #ddd",
-        borderRadius: 10,
-        background: "#fff",
-      }}
-    >
+    <div style={{ minWidth: 160, padding: 12, border: "1px solid #ddd", borderRadius: 10, background: "#fff" }}>
       <div style={{ color: "#666", fontSize: 13 }}>{label}</div>
       <div style={{ fontWeight: 800, fontSize: 22, marginTop: 4 }}>{value}</div>
     </div>
